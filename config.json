@@ -1,8 +1,4 @@
 {
-  "apptainer": {
-    "binary": "/Infra/systems/apptainer/1.4.5/bin/apptainer",
-    "images": "/Infra/systems/apptainer/images"
-  },
   "mounts": {
     "read-only": [
       { "exact-matched": "/tools" },
