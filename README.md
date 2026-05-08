@@ -65,7 +65,7 @@ WRAPPED_AI_IMAGE_NAME=kiro ai-cage --shell
 - `src/backend_landlock.c` — Landlock LSM 백엔드
 - `src/backend_apptainer.c` — Apptainer 컨테이너 백엔드
 - `src/backend.h` — 백엔드 인터페이스 정의
-- `config.json` — 마운트 정책 설정
+- `config.json` — 마운트 정책 및 워크스페이스 설정
 - `scripts/codex` — Bash 기반 Codex 래퍼 스크립트
 - `examples/images/` — Apptainer 컨테이너 정의 파일 (Kiro, Codex)
 

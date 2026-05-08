@@ -20,7 +20,6 @@ static int is_executable(const char *p) {
 int backend_run(const char *workspace, const MountList *mounts,
                 int argc, char **argv, const char *command,
                 const char *image_name, int shell_mode) {
-    (void)workspace;
 
     if (!image_name || !image_name[0]) {
         fprintf(stderr, "FAIL: WRAPPED_AI_IMAGE_NAME is not set\n");
@@ -40,8 +39,8 @@ int backend_run(const char *workspace, const MountList *mounts,
         return 1;
     }
 
-    /* Build argv: binary + subcmd + binds + image + extra args + NULL */
-    int max_args = 4 + (mounts->count * 2) + argc + 4;
+    /* Build argv: binary + subcmd + binds + workspace bind + image + extra args + NULL */
+    int max_args = 4 + (mounts->count * 2) + 2 + argc + 4;
     char **exec_argv = calloc(max_args, sizeof(char *));
     int ai = 0;
 
@@ -64,6 +63,15 @@ int backend_run(const char *workspace, const MountList *mounts,
             continue;
         exec_argv[ai++] = "-B";
         exec_argv[ai++] = spec;
+    }
+
+    /* Workspace: always rw (overrides ro parent bind) */
+    {
+        char *ws_spec;
+        if (asprintf(&ws_spec, "%s:%s:rw", workspace, workspace) >= 0) {
+            exec_argv[ai++] = "-B";
+            exec_argv[ai++] = ws_spec;
+        }
     }
 
     exec_argv[ai++] = image_path;

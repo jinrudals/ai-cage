@@ -76,6 +76,34 @@ static void mount_add(MountList *ml, const char *path, int readonly) {
     ml->count++;
 }
 
+/* Expand $USER in path string. Returns static buffer. */
+static const char *expand_user_variable(const char *path, const char *username) {
+    static char buf[PATH_MAX_LEN];
+    const char *pos = strstr(path, "$USER");
+    if (!pos) {
+        snprintf(buf, sizeof(buf), "%s", path);
+        return buf;
+    }
+    size_t prefix_len = pos - path;
+    snprintf(buf, sizeof(buf), "%.*s%s%s",
+             (int)prefix_len, path, username, pos + 5);
+    return buf;
+}
+
+/* Check if workspace (cwd) is allowed by home or configured workspaces. */
+static int is_workspace_allowed(const char *cwd, const char *home,
+                                cJSON *ws_array, const char *username) {
+    if (starts_with(cwd, home)) return 1;
+    if (!ws_array) return 0;
+    cJSON *item;
+    cJSON_ArrayForEach(item, ws_array) {
+        if (!cJSON_IsString(item)) continue;
+        const char *expanded = expand_user_variable(item->valuestring, username);
+        if (starts_with(cwd, expanded)) return 1;
+    }
+    return 0;
+}
+
 int main(int argc, char **argv) {
     const char *image_name = getenv("WRAPPED_AI_IMAGE_NAME");
     const char *debug_env = getenv("WRAPPED_AI_DEBUG");
@@ -100,9 +128,6 @@ int main(int argc, char **argv) {
     if (!getcwd(workspace, sizeof(workspace)))
         fail("cannot get current directory");
 
-    if (!starts_with(workspace, user_home))
-        fail("workspace must be under your home directory");
-
     /* Parse config */
     if (!path_exists(CONFIG_PATH))
         fail("config not found: " CONFIG_PATH);
@@ -111,6 +136,13 @@ int main(int argc, char **argv) {
     if (!json_str) fail("cannot read config");
     cJSON *cfg = cJSON_Parse(json_str);
     if (!cfg) fail("invalid JSON in config");
+
+    /* Parse workspaces */
+    cJSON *ws_array = cJSON_GetObjectItem(cfg, "workspaces");
+
+    /* Validate workspace */
+    if (!is_workspace_allowed(workspace, user_home, ws_array, pw->pw_name))
+        fail("workspace must be under your home directory or a configured workspace path");
 
     /* NFS targets */
     static char nfs_targets[MAX_NFS][PATH_MAX_LEN];
@@ -143,6 +175,16 @@ int main(int argc, char **argv) {
 
     if (g_debug) {
         fprintf(stderr, "WORKSPACE=%s\n", workspace);
+        if (ws_array && cJSON_IsArray(ws_array)) {
+            int ws_count = cJSON_GetArraySize(ws_array);
+            fprintf(stderr, "Workspaces (%d):\n", ws_count);
+            cJSON *ws_item;
+            cJSON_ArrayForEach(ws_item, ws_array) {
+                if (cJSON_IsString(ws_item))
+                    fprintf(stderr, "  %s -> %s\n", ws_item->valuestring,
+                            expand_user_variable(ws_item->valuestring, pw->pw_name));
+            }
+        }
         fprintf(stderr, "Mounts (%d):\n", mounts.count);
         for (int i = 0; i < mounts.count; i++)
             fprintf(stderr, "  %s [%s]\n", mounts.entries[i].path,
