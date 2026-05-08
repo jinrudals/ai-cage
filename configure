@@ -1,0 +1,40 @@
+#!/bin/sh
+set -e
+
+PREFIX="/usr/local"
+CONFIG_DIR="/etc/ai"
+CC="${CC:-gcc}"
+
+usage() {
+    echo "Usage: ./configure [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  --prefix=PATH       Installation prefix [/usr/local]"
+    echo "  --config-dir=PATH   Config file directory [/etc/ai]"
+    echo "  --cc=COMPILER       C compiler [gcc]"
+    echo "  --help              Show this help"
+    exit 0
+}
+
+for arg in "$@"; do
+    case "$arg" in
+        --prefix=*) PREFIX="${arg#*=}" ;;
+        --config-dir=*) CONFIG_DIR="${arg#*=}" ;;
+        --cc=*) CC="${arg#*=}" ;;
+        --help) usage ;;
+        *) echo "Unknown option: $arg"; exit 1 ;;
+    esac
+done
+
+cat > config.mk <<EOF
+PREFIX := $PREFIX
+CONFIG_DIR := $CONFIG_DIR
+CC := $CC
+EOF
+
+echo "Configuration:"
+echo "  PREFIX     = $PREFIX"
+echo "  CONFIG_DIR = $CONFIG_DIR"
+echo "  CC         = $CC"
+echo ""
+echo "Written to config.mk. Run 'make build' to compile."
