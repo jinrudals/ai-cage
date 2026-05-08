@@ -9,5 +9,9 @@
     "read-write": [
       { "exact-matched": "/tmp" }
     ]
-  }
+  },
+  "workspaces": [
+    "/tools/$USER",
+    "/workspace/project/$USER"
+  ]
 }
