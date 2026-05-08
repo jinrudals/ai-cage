@@ -1,0 +1,163 @@
+#!/bin/bash
+set -euo pipefail
+
+USER_NAME="$(id -un)"
+USER_HOME="$(getent passwd "$USER_NAME" | cut -d: -f6)"
+WORKSPACE="$(pwd -P)"
+CONFIG_JSON="/Infra/systems/bosai/configs.json"
+IMAGE="/Infra/systems/apptainer/images/codex.sif"
+APPTAINER="/Infra/systems/apptainer/1.4.5/bin/apptainer"
+CODEX_WRAPPER_DEBUG="${CODEX_WRAPPER_DEBUG:-0}"
+CODEX_WRAP_COMMAND="${CODEX_WRAP_COMMAND:-}"
+
+is_debug() {
+    case "${CODEX_WRAPPER_DEBUG}" in
+        1|true|TRUE|yes|YES|y|Y) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+debug() {
+    if is_debug; then
+        echo "$*" >&2
+    fi
+    return 0
+}
+
+debug_array() {
+    local title="$1"
+    shift
+
+    if is_debug; then
+        echo "$title" >&2
+        if [[ "$#" -eq 0 ]]; then
+            echo "  (empty)" >&2
+        else
+            printf '  %q\n' "$@" >&2
+        fi
+    fi
+    return 0
+}
+
+warn() {
+    if is_debug; then
+        echo "WARN: $*" >&2
+    fi
+    return 0
+}
+
+fail() {
+    echo "FAIL: $*" >&2
+    exit 1
+}
+
+if is_debug; then
+    set -x
+    trap 'rc=$?; echo "ERROR: line $LINENO: command failed: $BASH_COMMAND (rc=$rc)" >&2' ERR
+fi
+
+debug "USER_NAME=$USER_NAME"
+debug "USER_HOME=$USER_HOME"
+debug "WORKSPACE=$WORKSPACE"
+debug "CONFIG_JSON=$CONFIG_JSON"
+debug "IMAGE=$IMAGE"
+debug "APPTAINER=$APPTAINER"
+debug "CODEX_WRAP_COMMAND=$CODEX_WRAP_COMMAND"
+
+case "$WORKSPACE" in
+    "$USER_HOME"|"$USER_HOME"/*)
+        debug "OK"
+        ;;
+    *)
+        fail "workspace must be under your own home directory: $USER_HOME"
+        ;;
+esac
+
+[[ -f "$CONFIG_JSON" ]] || fail "config not found: $CONFIG_JSON"
+[[ -x "$APPTAINER" ]] || fail "apptainer not executable: $APPTAINER"
+[[ -f "$IMAGE" ]] || fail "image not found: $IMAGE"
+
+declare -a BIND_ARGS
+declare -A SEEN
+
+add_bind() {
+    local src="$1"
+    local mode="$2"
+
+    [[ -n "$src" ]] || return 0
+    [[ -e "$src" ]] || {
+        warn "skip bind: path does not exist: $src"
+        return 0
+    }
+
+    if [[ -z "${SEEN[$src]:-}" ]]; then
+        BIND_ARGS+=("-B" "${src}:${src}:${mode}")
+        SEEN["$src"]=1
+    fi
+}
+
+mapfile -t NFS_TARGETS < <(findmnt -rn -t nfs,nfs4 -o TARGET)
+debug_array "NFS targets:" "${NFS_TARGETS[@]}"
+
+while IFS=$'\t' read -r path mode match_type; do
+    [[ -n "$path" ]] || continue
+
+    debug "config item: path=$path mode=$mode match_type=$match_type"
+
+    case "$match_type" in
+        exact)
+            add_bind "$path" "$mode"
+            ;;
+        nfs-prefix)
+            for target in "${NFS_TARGETS[@]}"; do
+                case "$target" in
+                    "$path"|"$path"/*)
+                        add_bind "$target" "$mode"
+                        ;;
+                esac
+            done
+            ;;
+        *)
+            warn "unknown match type: $match_type ($path)"
+            ;;
+    esac
+done < <(
+    python3 - <<'PY' "$CONFIG_JSON"
+import json
+import sys
+
+with open(sys.argv[1]) as f:
+    cfg = json.load(f)
+
+mounts = cfg.get("mounts", {})
+
+for item in mounts.get("read-only", []):
+    if "exact-matched" in item:
+        print(f"{item['exact-matched']}\tro\texact")
+    elif "NFS-mounts-starts-with" in item:
+        print(f"{item['NFS-mounts-starts-with']}\tro\tnfs-prefix")
+
+for item in mounts.get("read-write", []):
+    if "exact-matched" in item:
+        print(f"{item['exact-matched']}\trw\texact")
+    elif "NFS-mounts-starts-with" in item:
+        print(f"{item['NFS-mounts-starts-with']}\trw\tnfs-prefix")
+PY
+)
+
+debug_array "Resolved bind args:" "${BIND_ARGS[@]}"
+
+unset DEBUG
+
+if [[ -n "$CODEX_WRAP_COMMAND" ]]; then
+    debug "about to run apptainer exec with shell command"
+    exec "$APPTAINER" exec \
+        "${BIND_ARGS[@]}" \
+        "$IMAGE" \
+        /bin/sh -lc "$CODEX_WRAP_COMMAND"
+else
+    debug "about to run apptainer run"
+    exec "$APPTAINER" run \
+        "${BIND_ARGS[@]}" \
+        "$IMAGE" "$@"
+fi
