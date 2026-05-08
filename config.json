@@ -1,0 +1,17 @@
+{
+  "apptainer": {
+    "binary": "/Infra/systems/apptainer/1.4.5/bin/apptainer",
+    "images": "/Infra/systems/apptainer/images"
+  },
+  "mounts": {
+    "read-only": [
+      { "exact-matched": "/tools" },
+      { "NFS-mounts-starts-with": "/data" },
+      { "NFS-mounts-starts-with": "/Infra" },
+      { "NFS-mounts-starts-with": "/storage" }
+    ],
+    "read-write": [
+      { "exact-matched": "/tmp" }
+    ]
+  }
+}
