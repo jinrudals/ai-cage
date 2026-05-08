@@ -1,0 +1,45 @@
+Bootstrap: docker
+From: debian:bookworm-slim
+
+%labels
+    Author benjamin.jin
+    App kiro-cli
+    Version latest
+
+%post
+    set -eux
+
+    export DEBIAN_FRONTEND=noninteractive
+
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        bash \
+        ca-certificates \
+        git \
+        openssh-client \
+        procps \
+        curl \
+        less \
+        vim \
+        ripgrep \
+        tini
+    rm -rf /var/lib/apt/lists/*
+
+    curl -fSL -o /tmp/kiro-cli.deb https://desktop-release.q.us-east-1.amazonaws.com/latest/kiro-cli.deb
+    dpkg-deb -x /tmp/kiro-cli.deb /tmp/kiro-cli-extracted
+    cp /tmp/kiro-cli-extracted/usr/bin/kiro-cli* /usr/local/bin/
+    chmod 755 /usr/local/bin/kiro-cli*
+    rm -rf /tmp/kiro-cli.deb /tmp/kiro-cli-extracted
+
+
+%environment
+    export PATH=/usr/local/bin:$PATH
+    export LANG=C.UTF-8
+    export LC_ALL=C.UTF-8
+
+%runscript
+    exec kiro-cli "$@"
+
+%test
+    set -x
+    kiro-cli --version

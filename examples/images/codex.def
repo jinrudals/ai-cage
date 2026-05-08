@@ -1,0 +1,45 @@
+Bootstrap: docker
+From: node:22-bookworm-slim
+
+
+
+%labels
+  Author benjamin.jin
+  App codex-cli
+  Version latest
+
+%post
+  set -eux
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update
+  apt-get install -y --no-install-recommends \
+    bash \
+    ca-certificates \
+    git \
+    openssh-client \
+    procps \
+    curl \
+    less \
+    vim \
+    ripgrep \
+    tini
+
+  rm -rf /var/lib/apt/lists/*
+  npm install -g @openai/codex
+  npm cache clean --force
+  mkdir -p /opt/codex
+  chmod 755 /opt/codex
+
+%environment
+  export PATH=/usr/local/bin:$PATH
+  export LANG=C.UTF-8
+  export LC_ALL=C.UTF-8
+
+%runscript
+  exec codex "$@"
+
+%test
+  set -x
+  node --version
+  npm --version
+  codex --help
