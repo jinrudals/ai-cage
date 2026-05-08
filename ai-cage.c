@@ -7,7 +7,10 @@
 #include <sys/stat.h>
 #include "cJSON.h"
 
-#define CONFIG_PATH "/etc/ai/config.json"
+#ifndef CONFIG_DIR
+#define CONFIG_DIR "/etc/ai"
+#endif
+#define CONFIG_PATH CONFIG_DIR "/config.json"
 #define MAX_BINDS 256
 #define MAX_NFS 256
 #define PATH_MAX_LEN 4096
